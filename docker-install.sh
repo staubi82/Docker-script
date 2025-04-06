@@ -236,19 +236,86 @@ install_docker() {
       ;;
   esac
   
-  # Kurze Pause, damit Docker-Befehle verfügbar werden
-  log "INFO" "Warte, bis Docker verfügbar ist..."
-  sleep 3
+  # Kurze Pause und zusätzliche Prüfungen
+  log "INFO" "Führe Post-Installations-Checks durch..."
   
-  # Prüfen, ob Docker installiert wurde
-  if ! is_docker_installed; then
-    log "ERROR" "Docker wurde nicht korrekt installiert. Die Pakete wurden installiert, aber der 'docker' Befehl ist nicht verfügbar."
-    log "WARN" "Mögliche Ursachen:"
-    log "WARN" "  - Die Installation wurde nicht korrekt abgeschlossen"
-    log "WARN" "  - Der Pfad zu Docker ist nicht in der PATH-Variable"
-    log "WARN" "  - Die Docker-Binärdateien wurden an einem unerwarteten Ort installiert"
-    log "WARN" "Versuche, das System neu zu starten und das Skript erneut auszuführen."
+  # 1. Explizite Prüfung der Docker-Binärdatei
+  if [ -x "/usr/bin/docker" ]; then
+    log "INFO" "Docker-Binärdatei gefunden: /usr/bin/docker"
+  else
+    log "ERROR" "Docker-Binärdatei nicht gefunden!"
+    log "WARN" "Installationsprotokolle:"
+    
+    case $PACKAGE_MANAGER in
+      "apt")
+        tail -n 20 /var/log/apt/history.log
+        ;;
+      "dnf"|"yum")
+        journalctl -u docker.service --no-pager
+        dnf history list docker
+        ;;
+      "pacman")
+        grep -i docker /var/log/pacman.log
+        ;;
+      "zypper")
+        zypper history -i | grep docker
+        ;;
+      *)
+        log "WARN" "Unbekannter Paketmanager - zeige Systemprotokolle:"
+        journalctl -u docker.service --no-pager
+        ;;
+    esac
+    
+    log "WARN" "\nVersuche manuelle Installation:"
+    log "INFO" "1. System aktualisieren: ${PACKAGE_MANAGER} update"
+    log "INFO" "2. Erneut installieren: ${PACKAGE_MANAGER} install docker"
+    log "INFO" "3. System neustarten und Skript erneut ausführen"
+    
     exit 1
+  fi
+
+  # 2. PATH-Variable prüfen und ggf. aktualisieren
+  log "INFO" "Aktuelle PATH-Variable: $PATH"
+  if ! echo "$PATH" | grep -q "/usr/bin"; then
+    log "WARN" "/usr/bin nicht im PATH - füge temporär hinzu"
+    export PATH="$PATH:/usr/bin"
+  fi
+
+  # 3. Zusätzliche Wartezeit und System-Cache aktualisieren
+  log "INFO" "Aktualisiere System-Cache..."
+  hash -r
+  ldconfig
+  # Symlink für /usr/local/bin falls nötig
+  if [ ! -L /usr/local/bin/docker ] && [ -x /usr/bin/docker ]; then
+    log "INFO" "Erstelle zusätzlichen Symlink in /usr/local/bin"
+    ln -sf /usr/bin/docker /usr/local/bin/docker
+  fi
+  
+  # Mehrfache Überprüfung mit Zeitlimit
+  for i in {1..5}; do
+    if command -v docker >/dev/null 2>&1; then
+      break
+    fi
+    log "WARN" "Docker-Kommando noch nicht verfügbar - Versuch $i/5"
+    sleep $((i*2))
+  done
+
+  # 4. Erweiterte Docker-Prüfung
+  if command -v docker >/dev/null 2>&1; then
+    log "INFO" "Docker-Kommando erfolgreich gefunden: $(which docker)"
+    log "INFO" "Docker Version: $(docker --version)"
+  else
+    log "ERROR" "Docker-Kommando immer noch nicht verfügbar!"
+    log "WARN" "Versuche manuellen Pfad: /usr/bin/docker --version"
+    if /usr/bin/docker --version; then
+      log "INFO" "Manuelle Ausführung erfolgreich - erstelle Symlink"
+      ln -s /usr/bin/docker /usr/local/bin/docker
+    else
+      log "ERROR" "Kritischer Fehler: Docker scheint nicht korrekt installiert zu sein"
+      log "INFO" "Bitte überprüfe die Installationsprotokolle:"
+      journalctl -u docker.service --no-pager
+      exit 1
+    fi
   fi
   
   log "INFO" "Docker wurde erfolgreich installiert. Glückwunsch, du bist jetzt ein Container-Kapitän! 🚢"
@@ -370,8 +437,8 @@ install_docker_debian() {
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$DISTRO $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
   
   # Docker installieren
-  run_with_spinner "Aktualisiere Paketlisten..." "apt-get update"
-  run_with_spinner "Installiere Docker Engine und Docker Compose..." "apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin docker-buildx-plugin"
+  run_with_spinner "Aktualisiere Paketlisten..." "apt-get update" || exit 1
+  run_with_spinner "Installiere Docker Engine und Docker Compose..." "apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin docker-buildx-plugin" || exit 1
 }
 
 # Arch Linux Installation - für die, die gerne am Bleeding Edge leben
@@ -380,8 +447,8 @@ install_docker_arch() {
   separator
   
   # Docker installieren
-  run_with_spinner "Aktualisiere System..." "pacman -Syu --noconfirm"
-  run_with_spinner "Installiere Docker..." "pacman -S --noconfirm docker docker-compose"
+  run_with_spinner "Aktualisiere System..." "pacman -Syu --noconfirm" || exit 1
+  run_with_spinner "Installiere Docker..." "pacman -S --noconfirm docker docker-compose" || exit 1
 }
 
 # RedHat Installation - Enterprise-ready, wie man so schön sagt
