@@ -17,13 +17,13 @@ Ein universelles Bash-Skript zur Installation von Docker und Docker Compose auf 
 Führe einfach den folgenden Befehl aus:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/staubi82/docker-install/main/docker-install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/staubi82/Docker-script/main/docker-install.sh | sudo bash
 ```
 
 oder
 
 ```bash
-wget -O- https://raw.githubusercontent.com/staubi82/docker-install/main/docker-install.sh | sudo bash
+wget -O- https://raw.githubusercontent.com/staubi82/Docker-script/main/docker-install.sh | sudo bash
 ```
 
 ## Management-Tools
