@@ -18,6 +18,43 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color - wie ein Bildschirm nach einem Bluescreen
 
+# Animiertes Ladesymbol - weil statische Ausgaben so 1990 sind
+spinner() {
+  local pid=$1
+  local delay=0.1
+  local spinstr='|/-\'
+  
+  echo -ne "${YELLOW}"
+  while [ "$(ps a | awk '{print $1}' | grep $pid)" ]; do
+    local temp=${spinstr#?}
+    printf " [%c]  " "$spinstr"
+    local spinstr=$temp${spinstr%"$temp"}
+    sleep $delay
+    printf "\b\b\b\b\b\b"
+  done
+  printf "    \b\b\b\b"
+  echo -ne "${NC}"
+}
+
+# Führt einen Befehl aus und zeigt dabei ein Ladesymbol an
+run_with_spinner() {
+  local message=$1
+  local command=$2
+  
+  echo -ne "${CYAN}$message${NC} "
+  $command >/dev/null 2>&1 &
+  spinner $!
+  local exit_code=$?
+  
+  if [ $exit_code -eq 0 ]; then
+    echo -e " ${GREEN}✓${NC}"
+  else
+    echo -e " ${RED}✗${NC}"
+  fi
+  
+  return $exit_code
+}
+
 # Fortschrittsbalken - weil wir alle gerne zusehen, wie sich Balken füllen.
 # Ist wie Bier einschenken, nur digitaler.
 progress_bar() {
@@ -50,7 +87,14 @@ log() {
 
 # Titel-Funktion - macht Text groß und wichtig, wie ein Manager in einer E-Mail
 title() {
-  echo -e "\n${BOLD}${BLUE}$1${NC}\n"
+  echo -e "\n${BOLD}${BLUE}═════════════════════════════════════════════════${NC}"
+  echo -e "${BOLD}${BLUE}  $1${NC}"
+  echo -e "${BOLD}${BLUE}═════════════════════════════════════════════════${NC}\n"
+}
+
+# Trennlinie - für mehr Übersichtlichkeit
+separator() {
+  echo -e "\n${CYAN}───────────────────────────────────────────────────${NC}\n"
 }
 
 # Prüfen, ob das Skript als Root ausgeführt wird
@@ -170,26 +214,24 @@ install_docker() {
 # Debian/Ubuntu Installation - der Klassiker unter den Distributionen
 install_docker_debian() {
   log "INFO" "Installiere Docker auf Debian/Ubuntu. Apt-get ist wie Online-Shopping für Nerds."
+  separator
   
   # Alte Versionen entfernen (falls vorhanden)
-  log "INFO" "Entferne alte Docker-Versionen, falls vorhanden. Out with the old, in with the new!"
-  apt-get remove -y docker docker-engine docker.io containerd runc &>/dev/null
+  run_with_spinner "Entferne alte Docker-Versionen..." "apt-get remove -y docker docker-engine docker.io containerd runc"
   
   # Abhängigkeiten installieren
-  log "INFO" "Installiere Abhängigkeiten. Das ist wie IKEA-Möbel aufbauen - erst mal alle Teile sammeln."
-  apt-get update
-  apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release
+  run_with_spinner "Aktualisiere Paketlisten..." "apt-get update"
+  run_with_spinner "Installiere Abhängigkeiten..." "apt-get install -y apt-transport-https ca-certificates curl gnupg lsb-release"
   
   # Docker-Repository hinzufügen
   log "INFO" "Füge Docker-Repository hinzu. Frische Software direkt vom Hersteller!"
   mkdir -p /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/$DISTRO/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+  run_with_spinner "Lade Docker GPG-Schlüssel..." "curl -fsSL https://download.docker.com/linux/$DISTRO/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg"
   echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/$DISTRO $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
   
   # Docker installieren
-  log "INFO" "Installiere Docker Engine und Docker Compose. Jetzt wird's spannend!"
-  apt-get update
-  apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin docker-buildx-plugin
+  run_with_spinner "Aktualisiere Paketlisten..." "apt-get update"
+  run_with_spinner "Installiere Docker Engine und Docker Compose..." "apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin docker-buildx-plugin"
   
   log "INFO" "Docker wurde erfolgreich auf deinem Debian/Ubuntu-System installiert. Glückwunsch, du bist jetzt ein Container-Kapitän! 🚢"
 }
@@ -197,10 +239,11 @@ install_docker_debian() {
 # Arch Linux Installation - für die, die gerne am Bleeding Edge leben
 install_docker_arch() {
   log "INFO" "Installiere Docker auf Arch Linux. Bleeding edge, wie ein Samurai-Schwert!"
+  separator
   
   # Docker installieren
-  pacman -Syu --noconfirm
-  pacman -S --noconfirm docker docker-compose
+  run_with_spinner "Aktualisiere System..." "pacman -Syu --noconfirm"
+  run_with_spinner "Installiere Docker..." "pacman -S --noconfirm docker docker-compose"
   
   log "INFO" "Docker wurde erfolgreich auf deinem Arch-System installiert. Du kannst jetzt bei Arch-Nutzertreffen angeben!"
 }
@@ -208,15 +251,16 @@ install_docker_arch() {
 # RedHat Installation - Enterprise-ready, wie man so schön sagt
 install_docker_redhat() {
   log "INFO" "Installiere Docker auf RedHat/Fedora. Enterprise-Grade Container, yay!"
+  separator
   
   # Abhängigkeiten installieren
-  $PACKAGE_MANAGER install -y dnf-plugins-core
+  run_with_spinner "Installiere Abhängigkeiten..." "$PACKAGE_MANAGER install -y dnf-plugins-core"
   
   # Docker-Repository hinzufügen
-  $PACKAGE_MANAGER config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo
+  run_with_spinner "Füge Docker-Repository hinzu..." "$PACKAGE_MANAGER config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo"
   
   # Docker installieren
-  $PACKAGE_MANAGER install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  run_with_spinner "Installiere Docker..." "$PACKAGE_MANAGER install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin"
   
   log "INFO" "Docker wurde erfolgreich auf deinem RedHat-System installiert. Jetzt bist du enterprise-ready!"
 }
@@ -224,11 +268,12 @@ install_docker_redhat() {
 # SUSE Installation - das grüne Chamäleon unter den Distributionen
 install_docker_suse() {
   log "INFO" "Installiere Docker auf SUSE. Das grüne Chamäleon trifft auf den blauen Wal!"
+  separator
   
   # Repository hinzufügen und Docker installieren
-  zypper addrepo https://download.docker.com/linux/sles/docker-ce.repo
-  zypper refresh
-  zypper install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+  run_with_spinner "Füge Docker-Repository hinzu..." "zypper addrepo https://download.docker.com/linux/sles/docker-ce.repo"
+  run_with_spinner "Aktualisiere Repositories..." "zypper refresh"
+  run_with_spinner "Installiere Docker..." "zypper install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin"
   
   log "INFO" "Docker wurde erfolgreich auf deinem SUSE-System installiert. Grün und Blau - eine schöne Kombination!"
 }
@@ -281,6 +326,7 @@ install_management_tools() {
 # Portainer - der Klassiker unter den Docker UIs
 install_portainer() {
   log "INFO" "Installiere Portainer - das Schweizer Taschenmesser für Docker-Management."
+  separator
   
   mkdir -p $DOCKER_DIR/portainer
   cat > $DOCKER_DIR/portainer/docker-compose.yml << EOF
@@ -302,9 +348,7 @@ volumes:
   portainer_data:
 EOF
   
-  log "INFO" "Starte Portainer..."
-  cd $DOCKER_DIR/portainer
-  docker compose up -d
+  run_with_spinner "Starte Portainer..." "cd $DOCKER_DIR/portainer && docker compose up -d"
   
   if [ $? -eq 0 ]; then
     log "INFO" "Portainer erfolgreich installiert und läuft auf Port 9000."
@@ -317,6 +361,7 @@ EOF
 # Dockge - der Neue im Block
 install_dockge() {
   log "INFO" "Installiere Dockge - weil 'Docker Compose' zu einfach auszusprechen war."
+  separator
   
   mkdir -p $DOCKER_DIR/dockge
   cat > $DOCKER_DIR/dockge/docker-compose.yml << EOF
@@ -341,9 +386,7 @@ EOF
   # Stacks-Verzeichnis erstellen
   mkdir -p /opt/stacks
   
-  log "INFO" "Starte Dockge..."
-  cd $DOCKER_DIR/dockge
-  docker compose up -d
+  run_with_spinner "Starte Dockge..." "cd $DOCKER_DIR/dockge && docker compose up -d"
   
   if [ $? -eq 0 ]; then
     log "INFO" "Dockge erfolgreich installiert und läuft auf Port 5001."
@@ -356,6 +399,7 @@ EOF
 # Yacht - der Leichtgewichtige
 install_yacht() {
   log "INFO" "Installiere Yacht - für alle, die auf einer Yacht leben möchten, aber nur für ein Ruderboot Budget haben."
+  separator
   
   mkdir -p $DOCKER_DIR/yacht
   cat > $DOCKER_DIR/yacht/docker-compose.yml << EOF
@@ -374,9 +418,7 @@ volumes:
   yacht_data:
 EOF
   
-  log "INFO" "Starte Yacht..."
-  cd $DOCKER_DIR/yacht
-  docker compose up -d
+  run_with_spinner "Starte Yacht..." "cd $DOCKER_DIR/yacht && docker compose up -d"
   
   if [ $? -eq 0 ]; then
     log "INFO" "Yacht erfolgreich installiert und läuft auf Port 8000."
@@ -395,41 +437,68 @@ show_completion_info() {
   # IP-Adresse ermitteln - komplizierter als man denkt!
   IP_ADDRESS=$(hostname -I | awk '{print $1}')
   if [ -z "$IP_ADDRESS" ]; then
-    IP_ADDRESS="localhost"
-    log "WARN" "Konnte IP-Adresse nicht ermitteln. Verwende 'localhost' stattdessen."
+    IP_ADDRESS=$(ip -4 addr show scope global | grep inet | awk '{print $2}' | cut -d/ -f1 | head -n 1)
+    if [ -z "$IP_ADDRESS" ]; then
+      IP_ADDRESS="localhost"
+      log "WARN" "Konnte IP-Adresse nicht ermitteln. Verwende 'localhost' stattdessen."
+    fi
   fi
+  
+  separator
+  
+  echo -e "${BOLD}${GREEN}╔═════════════════════════════════════════════════╗${NC}"
+  echo -e "${BOLD}${GREEN}║             INSTALLATION ERFOLGREICH!            ║${NC}"
+  echo -e "${BOLD}${GREEN}╚═════════════════════════════════════════════════╝${NC}\n"
   
   log "INFO" "Docker wurde erfolgreich installiert! 🎉"
   log "INFO" "Docker Version: $(docker --version)"
   log "INFO" "Docker Compose Version: $(docker compose version)"
   
-  echo -e "\n${BOLD}${GREEN}=== Installierte Management-Tools ===${NC}"
+  separator
+  
+  echo -e "${BOLD}${MAGENTA}╔═════════════════════════════════════════════════╗${NC}"
+  echo -e "${BOLD}${MAGENTA}║            INSTALLIERTE MANAGEMENT-TOOLS        ║${NC}"
+  echo -e "${BOLD}${MAGENTA}╚═════════════════════════════════════════════════╝${NC}\n"
   
   if [ "$PORTAINER_INSTALLED" = true ]; then
-    echo -e "${BOLD}Portainer:${NC} http://$IP_ADDRESS:9000"
-    echo -e "   Benutzername und Passwort bei erstem Login festlegen"
+    echo -e "${BOLD}${CYAN}Portainer:${NC}"
+    echo -e "  URL:      ${GREEN}http://$IP_ADDRESS:9000${NC}"
+    echo -e "  Login:    Benutzername und Passwort bei erstem Login festlegen"
+    echo
   fi
   
   if [ "$DOCKGE_INSTALLED" = true ]; then
-    echo -e "${BOLD}Dockge:${NC} http://$IP_ADDRESS:5001"
-    echo -e "   Benutzername und Passwort bei erstem Login festlegen"
+    echo -e "${BOLD}${CYAN}Dockge:${NC}"
+    echo -e "  URL:      ${GREEN}http://$IP_ADDRESS:5001${NC}"
+    echo -e "  Login:    Benutzername und Passwort bei erstem Login festlegen"
+    echo
   fi
   
   if [ "$YACHT_INSTALLED" = true ]; then
-    echo -e "${BOLD}Yacht:${NC} http://$IP_ADDRESS:8000"
-    echo -e "   Standard-Login: admin@yacht.local / pass"
-    echo -e "   Bitte ändere das Passwort sofort nach dem ersten Login!"
+    echo -e "${BOLD}${CYAN}Yacht:${NC}"
+    echo -e "  URL:      ${GREEN}http://$IP_ADDRESS:8000${NC}"
+    echo -e "  Login:    admin@yacht.local / pass"
+    echo -e "  Hinweis:  Bitte ändere das Passwort sofort nach dem ersten Login!"
+    echo
   fi
   
-  echo -e "\n${BOLD}${BLUE}=== Nützliche Docker-Befehle ===${NC}"
-  echo -e "docker ps                   # Zeigt laufende Container"
-  echo -e "docker images               # Zeigt heruntergeladene Images"
-  echo -e "docker compose up -d        # Startet Container im Hintergrund"
-  echo -e "docker compose down         # Stoppt und entfernt Container"
-  echo -e "docker system prune         # Räumt ungenutzte Ressourcen auf"
+  separator
   
-  echo -e "\n${YELLOW}Hinweis: Bitte melde dich ab und wieder an, damit die Docker-Gruppenänderungen wirksam werden.${NC}"
-  echo -e "${GREEN}Viel Spaß mit deinen Containern! 🐳${NC}"
+  echo -e "${BOLD}${BLUE}╔═════════════════════════════════════════════════╗${NC}"
+  echo -e "${BOLD}${BLUE}║              NÜTZLICHE DOCKER-BEFEHLE            ║${NC}"
+  echo -e "${BOLD}${BLUE}╚═════════════════════════════════════════════════╝${NC}\n"
+  
+  echo -e "${YELLOW}docker ps${NC}                   # Zeigt laufende Container"
+  echo -e "${YELLOW}docker images${NC}               # Zeigt heruntergeladene Images"
+  echo -e "${YELLOW}docker compose up -d${NC}        # Startet Container im Hintergrund"
+  echo -e "${YELLOW}docker compose down${NC}         # Stoppt und entfernt Container"
+  echo -e "${YELLOW}docker system prune${NC}         # Räumt ungenutzte Ressourcen auf"
+  
+  separator
+  
+  echo -e "${BOLD}${YELLOW}WICHTIGER HINWEIS:${NC}"
+  echo -e "Bitte melde dich ab und wieder an, damit die Docker-Gruppenänderungen wirksam werden."
+  echo -e "\n${BOLD}${GREEN}Viel Spaß mit deinen Containern! 🐳${NC}"
 }
 
 # ===== Hauptfunktion =====
@@ -474,5 +543,4 @@ main() {
 }
 
 # Los geht's!
-main
 main
