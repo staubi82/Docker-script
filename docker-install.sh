@@ -236,11 +236,22 @@ install_docker() {
       ;;
   esac
   
+  # Kurze Pause, damit Docker-Befehle verfügbar werden
+  log "INFO" "Warte, bis Docker verfügbar ist..."
+  sleep 3
+  
   # Prüfen, ob Docker installiert wurde
   if ! is_docker_installed; then
-    log "ERROR" "Docker wurde nicht korrekt installiert. Überprüfe die Installationsschritte."
+    log "ERROR" "Docker wurde nicht korrekt installiert. Die Pakete wurden installiert, aber der 'docker' Befehl ist nicht verfügbar."
+    log "WARN" "Mögliche Ursachen:"
+    log "WARN" "  - Die Installation wurde nicht korrekt abgeschlossen"
+    log "WARN" "  - Der Pfad zu Docker ist nicht in der PATH-Variable"
+    log "WARN" "  - Die Docker-Binärdateien wurden an einem unerwarteten Ort installiert"
+    log "WARN" "Versuche, das System neu zu starten und das Skript erneut auszuführen."
     exit 1
   fi
+  
+  log "INFO" "Docker wurde erfolgreich installiert. Glückwunsch, du bist jetzt ein Container-Kapitän! 🚢"
   
   # Docker-Dienst starten
   log "INFO" "Starte Docker-Dienst. Brumm brumm! 🚗"
@@ -361,8 +372,6 @@ install_docker_debian() {
   # Docker installieren
   run_with_spinner "Aktualisiere Paketlisten..." "apt-get update"
   run_with_spinner "Installiere Docker Engine und Docker Compose..." "apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin docker-buildx-plugin"
-  
-  log "INFO" "Docker wurde erfolgreich auf deinem Debian/Ubuntu-System installiert. Glückwunsch, du bist jetzt ein Container-Kapitän! 🚢"
 }
 
 # Arch Linux Installation - für die, die gerne am Bleeding Edge leben
@@ -373,8 +382,6 @@ install_docker_arch() {
   # Docker installieren
   run_with_spinner "Aktualisiere System..." "pacman -Syu --noconfirm"
   run_with_spinner "Installiere Docker..." "pacman -S --noconfirm docker docker-compose"
-  
-  log "INFO" "Docker wurde erfolgreich auf deinem Arch-System installiert. Du kannst jetzt bei Arch-Nutzertreffen angeben!"
 }
 
 # RedHat Installation - Enterprise-ready, wie man so schön sagt
@@ -390,8 +397,6 @@ install_docker_redhat() {
   
   # Docker installieren
   run_with_spinner "Installiere Docker..." "$PACKAGE_MANAGER install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin"
-  
-  log "INFO" "Docker wurde erfolgreich auf deinem RedHat-System installiert. Jetzt bist du enterprise-ready!"
 }
 
 # SUSE Installation - das grüne Chamäleon unter den Distributionen
@@ -403,8 +408,6 @@ install_docker_suse() {
   run_with_spinner "Füge Docker-Repository hinzu..." "zypper addrepo https://download.docker.com/linux/sles/docker-ce.repo"
   run_with_spinner "Aktualisiere Repositories..." "zypper refresh"
   run_with_spinner "Installiere Docker..." "zypper install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin"
-  
-  log "INFO" "Docker wurde erfolgreich auf deinem SUSE-System installiert. Grün und Blau - eine schöne Kombination!"
 }
 
 # ===== Docker Management Tools =====
