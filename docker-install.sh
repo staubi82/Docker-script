@@ -163,6 +163,55 @@ detect_distribution() {
 
 # ===== Docker Installation =====
 
+# Prüft, ob systemd verfügbar ist
+has_systemd() {
+  if command -v systemctl &>/dev/null && [ -d /run/systemd/system ]; then
+    return 0  # systemd ist verfügbar
+  else
+    return 1  # systemd ist nicht verfügbar
+  fi
+}
+
+# Prüft, ob Docker installiert ist
+is_docker_installed() {
+  if command -v docker &>/dev/null; then
+    return 0  # Docker ist installiert
+  else
+    return 1  # Docker ist nicht installiert
+  fi
+}
+
+# Startet Docker ohne systemd
+start_docker_without_systemd() {
+  log "INFO" "Starte Docker ohne systemd..."
+  
+  # Prüfen, ob dockerd bereits läuft
+  if pgrep -x "dockerd" > /dev/null; then
+    log "INFO" "Docker-Daemon läuft bereits."
+    return 0
+  fi
+  
+  # Docker-Daemon im Hintergrund starten
+  if [ -x /usr/bin/dockerd ]; then
+    nohup /usr/bin/dockerd > /var/log/dockerd.log 2>&1 &
+    sleep 2  # Kurz warten, damit Docker starten kann
+    if pgrep -x "dockerd" > /dev/null; then
+      log "INFO" "Docker-Daemon erfolgreich gestartet."
+      return 0
+    fi
+  elif [ -x /usr/bin/docker-daemon ]; then
+    nohup /usr/bin/docker-daemon > /var/log/dockerd.log 2>&1 &
+    sleep 2
+    if pgrep -x "docker-daemon" > /dev/null; then
+      log "INFO" "Docker-Daemon erfolgreich gestartet."
+      return 0
+    fi
+  fi
+  
+  log "ERROR" "Konnte Docker-Daemon nicht starten."
+  return 1
+}
+
 # Installiert Docker - wie ein Umzug, nur dass Container einziehen statt Möbel
 install_docker() {
   title "Docker Installation"
@@ -187,17 +236,97 @@ install_docker() {
       ;;
   esac
   
-  # Docker-Dienst starten und aktivieren
-  log "INFO" "Starte Docker-Dienst. Brumm brumm! 🚗"
-  systemctl start docker
-  systemctl enable docker
-  
-  # Prüfen, ob Docker läuft
-  if systemctl is-active --quiet docker; then
-    log "INFO" "Docker-Dienst läuft. Die Container-Fabrik ist einsatzbereit!"
-  else
-    log "ERROR" "Docker-Dienst konnte nicht gestartet werden. Das ist so traurig, Alexa spiel Despacito."
+  # Prüfen, ob Docker installiert wurde
+  if ! is_docker_installed; then
+    log "ERROR" "Docker wurde nicht korrekt installiert. Überprüfe die Installationsschritte."
     exit 1
+  fi
+  
+  # Docker-Dienst starten
+  log "INFO" "Starte Docker-Dienst. Brumm brumm! 🚗"
+  
+  DOCKER_STARTED=false
+  
+  # Versuchen, Docker mit systemd zu starten, falls verfügbar
+  if has_systemd; then
+    log "INFO" "Systemd erkannt, versuche Docker als Systemdienst zu starten..."
+    if systemctl start docker 2>/dev/null; then
+      systemctl enable docker 2>/dev/null
+      if systemctl is-active --quiet docker; then
+        log "INFO" "Docker-Dienst läuft. Die Container-Fabrik ist einsatzbereit!"
+        DOCKER_STARTED=true
+      else
+        log "WARN" "Docker-Dienst konnte nicht mit systemd gestartet werden. Versuche alternative Methode..."
+      fi
+    else
+      log "WARN" "Docker-Dienst konnte nicht mit systemd gestartet werden. Versuche alternative Methode..."
+    fi
+  else
+    log "INFO" "Systemd nicht erkannt, verwende alternative Startmethode..."
+  fi
+  
+  # Wenn Docker nicht mit systemd gestartet werden konnte, alternative Methode verwenden
+  if [ "$DOCKER_STARTED" = false ]; then
+    if start_docker_without_systemd; then
+      DOCKER_STARTED=true
+      
+      # Autostart-Eintrag für Docker erstellen
+      if [ -d /etc/init.d ]; then
+        log "INFO" "Erstelle Autostart-Eintrag für Docker..."
+        cat > /etc/init.d/docker << 'EOF'
+#!/bin/sh
+### BEGIN INIT INFO
+# Provides:           docker
+# Required-Start:     $network $remote_fs $syslog
+# Required-Stop:      $network $remote_fs $syslog
+# Default-Start:      2 3 4 5
+# Default-Stop:       0 1 6
+# Short-Description:  Docker Application Container Engine
+### END INIT INFO
+
+start() {
+    if ! pgrep -x "dockerd" > /dev/null; then
+        nohup /usr/bin/dockerd > /var/log/dockerd.log 2>&1 &
+    fi
+}
+
+stop() {
+    if pgrep -x "dockerd" > /dev/null; then
+        pkill -x "dockerd"
+    fi
+}
+
+case "$1" in
+    start)
+        start
+        ;;
+    stop)
+        stop
+        ;;
+    restart)
+        stop
+        start
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
+
+exit 0
+EOF
+        chmod +x /etc/init.d/docker
+        if command -v update-rc.d &>/dev/null; then
+          update-rc.d docker defaults
+        elif command -v chkconfig &>/dev/null; then
+          chkconfig --add docker
+        fi
+      fi
+    else
+      log "ERROR" "Docker-Dienst konnte nicht gestartet werden. Das ist so traurig, Alexa spiel Despacito."
+      log "WARN" "Du kannst versuchen, Docker manuell zu starten mit: 'dockerd &'"
+      log "WARN" "Die Installation wird fortgesetzt, aber einige Funktionen könnten nicht verfügbar sein."
+    fi
   fi
   
   # Benutzer zur Docker-Gruppe hinzufügen
