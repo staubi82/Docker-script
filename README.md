@@ -2,7 +2,7 @@
 
 Ein universelles Bash-Skript zur Installation von Docker und Docker Compose auf verschiedenen Linux-Distributionen mit optionalen Management-Tools.
 
-![Docker Logo](https://www.docker.com/sites/default/files/d8/2019-07/Moby-logo.png)
+![Docker Logo](https://upload.wikimedia.org/wikipedia/commons/7/70/Docker_logo.png)
 
 ## Funktionen
 
