@@ -23,12 +23,11 @@ NC='\033[0m' # No Color - wie ein Bildschirm nach einem Bluescreen
 progress_bar() {
   local duration=$1
   local steps=20
-  local sleep_time=$(bc <<< "scale=2; $duration / $steps")
   
   echo -ne "${YELLOW}[${NC}"
   for ((i=0; i<$steps; i++)); do
     echo -ne "${GREEN}#${NC}"
-    sleep $sleep_time
+    sleep 0.1
   done
   echo -ne "${YELLOW}]${NC}"
   echo
@@ -475,4 +474,5 @@ main() {
 }
 
 # Los geht's!
+main
 main
